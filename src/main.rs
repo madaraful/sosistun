@@ -1,14 +1,65 @@
+// the libaries of using
+use std;
 use sosistab;
+use x25519_dalek;
+use rand_core;
+
 use std::{env, process};
 use std::net::SocketAddr;
+use std::time::Duration;
+use std::thread::sleep;
 
-const VERSION:u128 = 0;
+use rand_core::{RngCore, OsRng};
+use x25519_dalek::StaticSecret;
 
-fn server(listen: SocketAddr, origin: SocketAddr) {
-    // XXX: doing...
+const VERSION:u8 = 3;
+
+async fn genkey() -> StaticSecret {
+    let mut key:[u8;32] = [0u8; 32];
+    OsRng.fill_bytes(&mut key);
+
+    let key:StaticSecret = StaticSecret::from(key);
+    return key;
 }
 
-fn main() {
+/*
+async fn client(sk:StaticSecret, listen:SocketAddr, remote:SocketAddr) {
+    //sosistab::
+}
+*/
+
+async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
+    // XXX: doing...
+
+    let listener:sosistab::Listener = sosistab::Listener::listen_udp(listen, sk, |size:usize, peer:SocketAddr|{
+        // on receive
+        println!("receive");
+    }, |size:usize, peer:SocketAddr|{
+        // on send
+        println!("send");
+    }).await.unwrap();
+
+    let interval:Duration = Duration::new(0, 1000);
+
+    println!("{:?}", listener.listener_stats());
+
+    loop {
+        sleep(interval);
+
+        let session:Option<sosistab::Session> = listener.accept_session().await;
+        let session:sosistab::Session = match session {
+            Some(v) => v,
+            None => { continue; }
+        };
+
+        println!("a session accepted");
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    println!("== SosisTUN v{} ==", VERSION);
+
     let args:Vec<String> = env::args().collect();
     let mode:&str = match args.get(1) {
         Some(v) => v,
@@ -29,7 +80,7 @@ fn main() {
             };
             let listen:SocketAddr = match listen.parse() {
                 Ok(v) => v,
-                Err(e) => {
+                Err(_e) => {
                     eprintln!("are you an idiot? why not give me a right format of listen address???");
                     process::exit(10);
                 }
@@ -43,7 +94,7 @@ fn main() {
                     };
                 },
                 None => {
-                    eprintln!("I am a sosistab tunnel, not a client that like shadowsocks client. so why you do not give me a target address? what is the remote server? you should use me like a kcptun client, not like a proxy client.");
+                    eprintln!("I am a sosistab tunnel, not a client like shadowsocks client. so why you do not give me a target? what is the remote server? you should use me like a kcptun client, not like a proxy client.");
                     eprintln!("do you want me to help you? ok, you can use \"remote\" as the next argument's value.");
                     process::exit(12);
                 }
@@ -58,7 +109,7 @@ fn main() {
             };
             let remote:SocketAddr = match remote.parse() {
                 Ok(v) => v,
-                Err(e) => {
+                Err(_e) => {
                     eprintln!("why you give me a wrong format of remote server's address???");
                     process::exit(14);
                 }
@@ -78,7 +129,7 @@ fn main() {
             };
             let listen:SocketAddr = match listen.parse() {
                 Ok(v) => v,
-                Err(e) => {
+                Err(_e) => {
                     eprintln!("are you an idiot? why not give me a right format of listen address???");
                     process::exit(4);
                 }
@@ -92,7 +143,7 @@ fn main() {
                     };
                 },
                 None => {
-                    eprintln!("I am a sosistab tunnel, not a server that like shadowsocks server. so why you do not give me a target address? what is the original server? you should use me like a kcptun server, not like a proxy server.");
+                    eprintln!("I am a sosistab tunnel, not a server like shadowsocks server. so why you do not give me a target? what is the original server? you should use me like a kcptun server, not like a proxy server.");
                     eprintln!("do you want me to help you? ok, you can use \"origin\" as the next argument's value.");
                     process::exit(5);
                 }
@@ -107,18 +158,20 @@ fn main() {
             };
             let origin:SocketAddr = match origin.parse() {
                 Ok(v) => v,
-                Err(e) => {
+                Err(_e) => {
                     eprintln!("why you give me a wrong format of original server's address???");
                     process::exit(8);
                 }
             };
 
-            println!("still in developing..."); process::exit(0);
+            println!("still in developing..."); //process::exit(0);
 
-            //server(listen, );
+            let key = genkey().await;
+            println!("key: {:?}", key.to_bytes());
+            server(key, listen, origin).await;
         },
         _ => {
-            eprintln!("why you input a wrong mode???");
+            eprintln!("why you type a wrong mode???");
             process::exit(2);
         }
     }
