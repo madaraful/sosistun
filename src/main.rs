@@ -250,8 +250,6 @@ async fn main() {
                 }
             };
 
-            eprintln!("still in developing..."); //process::exit(0);
-
             match args.get(5) {
                 Some(v) => {
                     if v != "pubkey" {
@@ -359,8 +357,6 @@ async fn main() {
                     process::exit(8);
                 }
             };
-
-            //eprintln!("still in developing..."); //process::exit(0);
 
             let key = takekey().await;
 
