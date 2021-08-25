@@ -16,11 +16,11 @@ use std::collections::HashMap;
 use rand_core::{RngCore, OsRng};
 use x25519_dalek::{StaticSecret, PublicKey};
 
-use futures_lite::prelude::*;
-use futures_lite::AsyncRead;
-use futures_lite::AsyncReadExt;
+//use futures_lite::prelude::*;
+//use futures_lite::AsyncRead;
+//use futures_lite::AsyncReadExt;
 
-const VERSION:u8 = 10;
+const VERSION:u128 = 10;
 
 async fn genkey() -> StaticSecret {
     let mut key:[u8;32] = [0u8; 32];
@@ -87,14 +87,14 @@ async fn client(pk:PublicKey, listen:SocketAddr, remote:SocketAddr) {
                 
                     { // first ping (once)
                         let a:Vec<u8> = Vec::new();
-                        sosistab_conn.send_bytes(&a[..]).await;
+                        sosistab_conn.send_bytes(&a[..]).await.unwrap();
                     }
         
                     conns.insert(peer, sosistab_conn);
                 }
         
                 let sosistab_conn = conns.get(&peer).unwrap();
-                sosistab_conn.send_bytes(buf).await;
+                sosistab_conn.send_bytes(buf).await.unwrap();
                 eprintln!("local sent");
             },
             Err(_) => {}
@@ -141,7 +141,7 @@ async fn client(pk:PublicKey, listen:SocketAddr, remote:SocketAddr) {
 }
 
 async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
-    let sosistab_server:sosistab::Listener = sosistab::Listener::listen_udp(listen, sk, |size:usize, peer:SocketAddr|{ /* on receive */ }, |size:usize, peer:SocketAddr|{ /* on send */ }).await.unwrap();
+    let sosistab_server:sosistab::Listener = sosistab::Listener::listen_udp(listen, sk, |_size:usize, _peer:SocketAddr|{ /* on receive */ }, |_size:usize, _peer:SocketAddr|{ /* on send */ }).await.unwrap();
 
     loop {
         let sosistab_conn:Option<sosistab::Session> = sosistab_server.accept_session().await;
@@ -152,20 +152,27 @@ async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
 
         { // first ping (once)
             let a:Vec<u8> = Vec::new();
-            sosistab_conn.send_bytes(&a[..]).await;
+            sosistab_conn.send_bytes(&a[..]).await.unwrap();
         }
 
         let udp_client = async_net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
         tokio::spawn(async move {
+            let mut last = std::time::SystemTime::now();
             loop {
+                if last.elapsed().unwrap().as_secs() > 100 {
+                    break;
+                }
+
                 let mut buf:[u8;65599] = [0u8; 65599];
                 match tokio::time::timeout(Duration::new(0, 1), udp_client.recv_from(&mut buf)).await {
                     Ok(v) => {
                         let (size, peer) = v.unwrap();
 
                         if peer == origin {
-                            sosistab_conn.send_bytes(&buf[..size]).await;
+                            last = std::time::SystemTime::now();
+                            if size <= 0 { continue; }
+                            sosistab_conn.send_bytes(&buf[..size]).await.unwrap();
                         }
                     },
 
@@ -176,16 +183,17 @@ async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
                     Ok(v) => {
                         let buf = v.unwrap();
                         let buf = &buf[..];
-                        eprintln!("server is recved some data from other side: {:?}", &buf);
+
+                        last = std::time::SystemTime::now();
 
                         if buf.len() <= 0 { continue; }
-
-                        udp_client.send_to(&buf[..], origin).await;
-                        eprintln!("server sent to origin");
+                        udp_client.send_to(&buf[..], origin).await.unwrap();
                     },
 
                     _ => {}
                 }
+
+                tokio::time::sleep(Duration::new(0, 1000000)).await;
             }
         });
     }
