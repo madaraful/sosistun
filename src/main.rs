@@ -1,16 +1,23 @@
+#![feature(async_closure)]
+
 // the libaries of using
 use std;
 use sosistab;
 use x25519_dalek;
 use rand_core;
+use async_net;
 
 use std::{env, process};
 use std::net::SocketAddr;
 use std::time::Duration;
-use std::thread::sleep;
+use std::sync::Arc;
 
 use rand_core::{RngCore, OsRng};
-use x25519_dalek::StaticSecret;
+use x25519_dalek::{StaticSecret, PublicKey};
+
+use futures_lite::prelude::*;
+use futures_lite::AsyncRead;
+use futures_lite::AsyncReadExt;
 
 const VERSION:u8 = 3;
 
@@ -22,16 +29,52 @@ async fn genkey() -> StaticSecret {
     return key;
 }
 
-/*
-async fn client(sk:StaticSecret, listen:SocketAddr, remote:SocketAddr) {
-    //sosistab::
+async fn client(pk:PublicKey, listen:SocketAddr, remote:SocketAddr) {
+    let tcp_server:async_net::TcpListener = async_net::TcpListener::bind(listen).await.unwrap();
+    let mut tcp_in = tcp_server.incoming();
+
+    loop {
+        let tcp_conn = match tcp_in.next().await {
+            Some(v) => v,
+            None => { return; }
+        };
+        let mut tcp_conn = tcp_conn.unwrap();
+
+        let gather:Arc<sosistab::StatsGatherer> = Arc::new(sosistab::StatsGatherer::new_active());
+        let sosistab_client:sosistab::ClientConfig = sosistab::ClientConfig::new(sosistab::Protocol::DirectUdp, remote, pk, gather);
+        let sosistab_conn = sosistab_client.connect().await.unwrap();
+    
+        tokio::spawn(async move {
+            loop {
+                let mut buf:[u8;65599] = [0u8; 65599];
+                let mut data:Vec<u8> = Vec::new();
+                match tokio::time::timeout(Duration::new(0, 1), tcp_conn.read(&mut buf)).await {
+                    Ok(v) => {
+                        let size = v.unwrap();
+                        data.extend(&buf[..size]);
+                        sosistab_conn.send_bytes(&data[..]).await;
+                    },
+                    Err(_e) => {}
+                }
+
+                // ==================================================
+
+                match tokio::time::timeout(Duration::new(0, 1), sosistab_conn.recv_bytes()).await {
+                    Ok(v) => {
+                        let data = v.unwrap();
+                        tcp_conn.write_all(&data).await;
+                    },
+                    Err(_e) => {}
+                };
+            };
+        });
+    };
 }
-*/
 
 async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
     // XXX: doing...
 
-    let listener:sosistab::Listener = sosistab::Listener::listen_udp(listen, sk, |size:usize, peer:SocketAddr|{
+    let sosistab_server:sosistab::Listener = sosistab::Listener::listen_udp(listen, sk, |size:usize, peer:SocketAddr|{
         // on receive
         println!("receive");
     }, |size:usize, peer:SocketAddr|{
@@ -39,20 +82,45 @@ async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
         println!("send");
     }).await.unwrap();
 
-    let interval:Duration = Duration::new(0, 1000);
-
-    println!("{:?}", listener.listener_stats());
-
     loop {
-        sleep(interval);
-
-        let session:Option<sosistab::Session> = listener.accept_session().await;
-        let session:sosistab::Session = match session {
+        let sosistab_conn:Option<sosistab::Session> = sosistab_server.accept_session().await;
+        let sosistab_conn:sosistab::Session = match sosistab_conn {
             Some(v) => v,
             None => { continue; }
         };
 
-        println!("a session accepted");
+        let mut tcp_client = match async_net::TcpStream::connect(origin).await {
+            Ok(v) => v,
+            Err(_e) => {
+                drop(sosistab_conn);
+                continue;
+            }
+        };
+
+        tokio::spawn(async move {
+            loop {
+                let mut buf:[u8;65599] = [0u8; 65599];
+                let mut data:Vec<u8> = Vec::new();
+                match tokio::time::timeout(Duration::new(0, 1), tcp_client.read(&mut buf)).await {
+                    Ok(v) => {
+                        let size = v.unwrap();
+                        data.extend(&buf[..size]);
+                        sosistab_conn.send_bytes(&data[..]).await;
+                    },
+                    Err(_e) => {}
+                };
+
+                // =========================================================
+
+                match tokio::time::timeout(Duration::new(0, 1), sosistab_conn.recv_bytes()).await {
+                    Ok(v) => {
+                        let data = v.unwrap();
+                        tcp_client.write_all(&data).await;
+                    },
+                    Err(_e) => {}
+                };
+            }
+        });
     }
 }
 
@@ -115,9 +183,9 @@ async fn main() {
                 }
             };
 
-            println!("still in developing..."); process::exit(0);
+            println!("still in developing..."); //process::exit(0);
 
-            //client(listen, );
+            client(PublicKey::from([0u8;32]), listen, remote).await;
         },
         "server" => {
             let listen:&str = match args.get(2) {
