@@ -20,7 +20,7 @@ use x25519_dalek::{StaticSecret, PublicKey};
 //use futures_lite::AsyncRead;
 //use futures_lite::AsyncReadExt;
 
-const VERSION:u128 = 10;
+const VERSION:u128 = 11;
 
 async fn genkey() -> StaticSecret {
     let mut key:[u8;32] = [0u8; 32];
@@ -70,7 +70,6 @@ async fn client(pk:PublicKey, listen:SocketAddr, remote:SocketAddr) {
             Ok(v) => {
                 let (size, peer) = v.unwrap();
                 let buf = &buf[..size];
-                eprintln!("local recved: {:?}", buf);
 
                 let mut new:bool = true;
                 for key in conns.keys() {
@@ -95,7 +94,6 @@ async fn client(pk:PublicKey, listen:SocketAddr, remote:SocketAddr) {
         
                 let sosistab_conn = conns.get(&peer).unwrap();
                 sosistab_conn.send_bytes(buf).await.unwrap();
-                eprintln!("local sent");
             },
             Err(_) => {}
         };
@@ -192,10 +190,10 @@ async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
 
                     _ => {}
                 }
-
-                tokio::time::sleep(Duration::new(0, 1000000)).await;
             }
         });
+
+        tokio::time::sleep(Duration::new(0, 1000000)).await;
     }
 }
 
