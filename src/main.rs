@@ -16,7 +16,7 @@ use x25519_dalek::{PublicKey, StaticSecret};
 
 use smol::prelude::*;
 
-const VERSION: u128 = 20;
+const VERSION: u128 = 30;
 
 async fn genkey() -> StaticSecret {
     let mut key: [u8; 32] = [0u8; 32];
@@ -61,19 +61,19 @@ async fn takekey() -> StaticSecret {
 }
 
 async fn client(pk: PublicKey, listen: SocketAddr, remote: SocketAddr) {
+    let sosistab_stats: Arc<sosistab::StatsGatherer> =
+        Arc::new(sosistab::StatsGatherer::new_active());
+    let sosistab_client: sosistab::ClientConfig =
+        sosistab::ClientConfig::new(sosistab::Protocol::DirectUdp, remote, pk, sosistab_stats);
+
+    let sosistab_conn: sosistab::Session = sosistab_client.connect().await.unwrap();
+    let sosistab_conn: sosistab::Multiplex = sosistab_conn.multiplex();
+
     let tcp_server: smol::net::TcpListener = smol::net::TcpListener::bind(listen).await.unwrap();
     let mut tcp_in = tcp_server.incoming();
 
     loop {
         let tcp_conn: smol::net::TcpStream = tcp_in.next().await.unwrap().unwrap();
-
-        let sosistab_stats: Arc<sosistab::StatsGatherer> =
-            Arc::new(sosistab::StatsGatherer::new_active());
-        let sosistab_client: sosistab::ClientConfig =
-            sosistab::ClientConfig::new(sosistab::Protocol::DirectUdp, remote, pk, sosistab_stats);
-
-        let sosistab_conn: sosistab::Session = sosistab_client.connect().await.unwrap();
-        let sosistab_conn: sosistab::Multiplex = sosistab_conn.multiplex();
         let sosistab_conn: sosistab::RelConn = sosistab_conn.open_conn(None).await.unwrap();
 
         smol::spawn(smol::io::copy(sosistab_conn.clone(), tcp_conn.clone())).detach();
@@ -94,12 +94,17 @@ async fn server(sk: StaticSecret, listen: SocketAddr, origin: SocketAddr) {
     loop {
         let sosistab_conn: sosistab::Session = sosistab_server.accept_session().await.unwrap();
         let sosistab_conn: sosistab::Multiplex = sosistab_conn.multiplex();
-        let sosistab_conn: sosistab::RelConn = sosistab_conn.accept_conn().await.unwrap();
 
-        let tcp_conn = smol::net::TcpStream::connect(origin).await.unwrap();
+        smol::spawn(async move {
+            loop {
+                let sosistab_conn: sosistab::RelConn = sosistab_conn.accept_conn().await.unwrap();
+                let tcp_conn = smol::net::TcpStream::connect(origin).await.unwrap();
 
-        smol::spawn(smol::io::copy(sosistab_conn.clone(), tcp_conn.clone())).detach();
-        smol::spawn(smol::io::copy(tcp_conn, sosistab_conn)).detach();
+                smol::spawn(smol::io::copy(sosistab_conn.clone(), tcp_conn.clone())).detach();
+                smol::spawn(smol::io::copy(tcp_conn, sosistab_conn)).detach();
+            }
+        })
+        .detach();
     }
 }
 
