@@ -11,14 +11,13 @@ use std::{env, process};
 use std::net::SocketAddr;
 use std::time::Duration;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 use rand_core::{RngCore, OsRng};
 use x25519_dalek::{StaticSecret, PublicKey};
 
-//use futures_lite::prelude::*;
-//use futures_lite::AsyncRead;
-//use futures_lite::AsyncReadExt;
+use futures_lite::prelude::*;
+//use futures_lite::{AsyncRead, AsyncWrite};
+use futures_lite::{AsyncReadExt, AsyncWriteExt};
 
 const VERSION:u128 = 11;
 
@@ -61,61 +60,34 @@ async fn takekey() -> StaticSecret {
 }
 
 async fn client(pk:PublicKey, listen:SocketAddr, remote:SocketAddr) {
-    let udp_server:async_net::UdpSocket = async_net::UdpSocket::bind(listen).await.unwrap();
-    let mut conns:HashMap<SocketAddr, sosistab::Session> = HashMap::new();
+    let tcp_server:async_net::TcpListener = async_net::TcpListener::bind(listen).await.unwrap();
+    let mut tcp_in = tcp_server.incoming();
 
+    let mut now:u128 = 0;
     loop {
-        let mut buf:[u8;65599] = [0u8; 65599];
-        match tokio::time::timeout(Duration::new(0, 1000), udp_server.recv_from(&mut buf)).await {
-            Ok(v) => {
-                let (size, peer) = v.unwrap();
-                let buf = &buf[..size];
+        let mut tcp_conn:async_net::TcpStream = tcp_in.next().await.unwrap().unwrap();
 
-                let mut new:bool = true;
-                for key in conns.keys() {
-                    if key == &peer {
-                        new = false;
-                        break;
-                    }
-                }
-                
-                if new {
-                    let gather:Arc<sosistab::StatsGatherer> = Arc::new(sosistab::StatsGatherer::new_active());
-                    let sosistab_client:sosistab::ClientConfig = sosistab::ClientConfig::new(sosistab::Protocol::DirectUdp, remote, pk, gather);
-                    let sosistab_conn = sosistab_client.connect().await.unwrap();
-                
-                    { // first ping (once)
-                        let a:Vec<u8> = Vec::new();
-                        sosistab_conn.send_bytes(&a[..]).await.unwrap();
-                    }
-        
-                    conns.insert(peer, sosistab_conn);
-                }
-        
-                let sosistab_conn = conns.get(&peer).unwrap();
-                sosistab_conn.send_bytes(buf).await.unwrap();
-            },
-            Err(_) => {}
-        };
+        now += 1;
 
-        for peer in &mut conns.keys() {
-            let sosistab_conn = conns.get(&peer).unwrap();
-            match tokio::time::timeout(Duration::new(0, 1), sosistab_conn.recv_bytes()).await {
-                Ok(v) => {
-                    let data = v.unwrap();
-                    udp_server.send_to(&data, peer).await.unwrap();
-                },
-                _ => {}
-            }
+        let sosistab_stats:Arc<sosistab::StatsGatherer> = Arc::new(sosistab::StatsGatherer::new_active());
+        let sosistab_client:sosistab::ClientConfig = sosistab::ClientConfig::new(sosistab::Protocol::DirectUdp, remote, pk, sosistab_stats);
+        let sosistab_conn = sosistab_client.connect().await.unwrap();
+        { // first ping (once)
+            let a:Vec<u8> = Vec::new();
+            sosistab_conn.send_bytes(&a[..]).await.unwrap();
         }
+        let sosistab_conn = sosistab_conn.multiplex();
+        let mut sosistab_conn = sosistab_conn.open_conn(Some(now.to_string())).await.unwrap();
 
-        /*
         tokio::spawn(async move {
             loop {
-                match tokio::time::timeout(Duration::new(0, 1), sosistab_conn.recv_bytes()).await {
+                let mut buf:[u8;65599] = [0u8; 65599];
+                match tokio::time::timeout(Duration::new(0, 1), sosistab_conn.read(&mut buf)).await {
                     Ok(v) => {
-                        let data = v.unwrap();
-                        tcp_conn.write_all(&data).await;
+                        let size = v.unwrap();
+                        let data = &buf[..size];
+                        tcp_conn.write(&data).await.unwrap();
+                        tcp_conn.flush().await.unwrap();
                     },
                     Err(_) => {}
                 };
@@ -123,18 +95,20 @@ async fn client(pk:PublicKey, listen:SocketAddr, remote:SocketAddr) {
                 // ==================================================
 
                 let mut buf:[u8;65599] = [0u8; 65599];
-                let mut data:Vec<u8> = Vec::new();
                 match tokio::time::timeout(Duration::new(0, 1), tcp_conn.read(&mut buf)).await {
                     Ok(v) => {
                         let size = v.unwrap();
-                        data.extend(&buf[..size]);
-                        sosistab_conn.send_bytes(&data[..]).await;
+                        let data = &buf[..size];
+                        if size <= 0 { return; }
+
+                        eprintln!("client: send to server: {:?}", data);
+                        sosistab_conn.write(&data).await.unwrap();
+                        sosistab_conn.flush().await.unwrap();
                     },
                     Err(_) => {}
                 }
             };
         });
-        */
     };
 }
 
@@ -142,50 +116,43 @@ async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
     let sosistab_server:sosistab::Listener = sosistab::Listener::listen_udp(listen, sk, |_size:usize, _peer:SocketAddr|{ /* on receive */ }, |_size:usize, _peer:SocketAddr|{ /* on send */ }).await.unwrap();
 
     loop {
-        let sosistab_conn:Option<sosistab::Session> = sosistab_server.accept_session().await;
-        let sosistab_conn:sosistab::Session = match sosistab_conn {
-            Some(v) => v,
-            None => { continue; }
-        };
-
+        let sosistab_conn:sosistab::Session = sosistab_server.accept_session().await.unwrap();
         { // first ping (once)
             let a:Vec<u8> = Vec::new();
             sosistab_conn.send_bytes(&a[..]).await.unwrap();
         }
+        let sosistab_conn = sosistab_conn.multiplex();
 
-        let udp_client = async_net::UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        let mut sosistab_conn = sosistab_conn.accept_conn().await.unwrap();
+        let mut tcp_client = async_net::TcpStream::connect(origin).await.unwrap();
 
         tokio::spawn(async move {
-            let mut last = std::time::SystemTime::now();
             loop {
-                if last.elapsed().unwrap().as_secs() > 100 {
-                    break;
-                }
-
                 let mut buf:[u8;65599] = [0u8; 65599];
-                match tokio::time::timeout(Duration::new(0, 1), udp_client.recv_from(&mut buf)).await {
+                match tokio::time::timeout(Duration::new(0, 1), tcp_client.read(&mut buf)).await {
                     Ok(v) => {
-                        let (size, peer) = v.unwrap();
+                        let size = v.unwrap();
+                        let data = &buf[..size];
 
-                        if peer == origin {
-                            last = std::time::SystemTime::now();
-                            if size <= 0 { continue; }
-                            sosistab_conn.send_bytes(&buf[..size]).await.unwrap();
-                        }
+                        if data.len() <= 0 { return; }
+                        sosistab_conn.write(data).await.unwrap();
+                        sosistab_conn.flush().await.unwrap();
                     },
 
                     _ => {}
                 };
 
-                match tokio::time::timeout(Duration::new(0, 1), sosistab_conn.recv_bytes()).await {
+                let mut buf:[u8;65599] = [0u8; 65599];
+                match tokio::time::timeout(Duration::new(0, 1), sosistab_conn.read(&mut buf)).await {
                     Ok(v) => {
-                        let buf = v.unwrap();
-                        let buf = &buf[..];
+                        let size = v.unwrap();
 
-                        last = std::time::SystemTime::now();
+                        let data = &buf[..size];
+                        eprintln!("server: received from client: {:?}", data);
 
-                        if buf.len() <= 0 { continue; }
-                        udp_client.send_to(&buf[..], origin).await.unwrap();
+                        if data.len() <= 0 { return; }
+                        tcp_client.write(data).await.unwrap();
+                        tcp_client.flush().await.unwrap();
                     },
 
                     _ => {}
@@ -193,7 +160,7 @@ async fn server(sk:StaticSecret, listen:SocketAddr, origin:SocketAddr) {
             }
         });
 
-        tokio::time::sleep(Duration::new(0, 1000000)).await;
+        //tokio::time::sleep(Duration::new(0, 1000000)).await;
     }
 }
 
