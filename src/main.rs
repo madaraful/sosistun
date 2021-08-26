@@ -1,5 +1,3 @@
-#![feature(async_closure)]
-
 // the libaries of using
 use rand_core;
 use smol;
@@ -16,7 +14,7 @@ use x25519_dalek::{PublicKey, StaticSecret};
 
 use smol::prelude::*;
 
-const VERSION: u128 = 30;
+const VERSION: u128 = 31;
 
 async fn genkey() -> StaticSecret {
     let mut key: [u8; 32] = [0u8; 32];
