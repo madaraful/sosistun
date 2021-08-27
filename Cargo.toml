@@ -2,7 +2,7 @@
 name = "sosistun"
 description = "A Secure & Unidentifiable Tunnel based on Sosistab"
 keywords = [ "sosistab", "sosistun", "rdup", "tunnel", "udp" ]
-version = "1.0.2"
+version = "1.0.3"
 edition = "2018"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/madaraful/sosistun"

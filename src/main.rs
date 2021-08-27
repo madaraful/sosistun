@@ -15,7 +15,7 @@ use x25519_dalek::{PublicKey, StaticSecret};
 
 use smol::prelude::*;
 
-const VERSION: &str = "1.0.2";
+const VERSION: &str = "1.0.3";
 
 async fn genkey() -> StaticSecret {
     let mut key: [u8; 32] = [0u8; 32];
