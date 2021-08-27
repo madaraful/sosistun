@@ -4,6 +4,7 @@ use smol;
 use sosistab;
 use std;
 use x25519_dalek;
+use dirs;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -25,12 +26,12 @@ async fn genkey() -> StaticSecret {
 }
 
 async fn takekey() -> StaticSecret {
-    let me: String = env::current_exe()
+    let home: String = dirs::home_dir()
         .unwrap()
         .into_os_string()
         .into_string()
         .unwrap();
-    let keyfile: String = me + ".sosistun-private-key";
+    let keyfile: String = home + "/sosistun-private-key";
 
     let key: StaticSecret = match std::fs::read(&keyfile) {
         Ok(v) => {
