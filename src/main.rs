@@ -167,7 +167,7 @@ async fn async_main() {
             let remote: SocketAddr = match remote.parse() {
                 Ok(v) => v,
                 Err(_e) => {
-                    eprintln!("why you give me a wrong format of remote server's address???");
+                    eprintln!("why you give me a invalid format of remote server's address???");
                     process::exit(14);
                 }
             };
@@ -277,7 +277,7 @@ async fn async_main() {
             let origin: SocketAddr = match origin.parse() {
                 Ok(v) => v,
                 Err(_e) => {
-                    eprintln!("why you give me a wrong format of original server's address???");
+                    eprintln!("why you give me a invalid format of original server's address???");
                     process::exit(8);
                 }
             };
@@ -307,7 +307,7 @@ async fn async_main() {
             server(key, listen, origin).await;
         }
         _ => {
-            eprintln!("why you type a wrong mode???");
+            eprintln!("why you type a invalid mode???");
             process::exit(2);
         }
     }
