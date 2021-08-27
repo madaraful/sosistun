@@ -1,0 +1,86 @@
+name: build
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: get git repo dir
+      run: echo "GITDIR=`pwd`" >> ${GITHUB_ENV}
+
+    - name: rust up
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: rustfmt, clippy
+
+    - name: check
+      run: cargo check -j 20
+
+    - name: install cross
+      run: cargo install cross -j 20
+
+    - name: create bin dir
+      run: |
+        mkdir bin/ || exit
+        cd bin/ || exit
+        echo "BINDIR=`pwd`" >> ${GITHUB_ENV}
+
+    - name: build linux-amd64
+      run: |
+        cd ${{ env.GITDIR }} || exit
+        cross build --release --locked -j 20 --target x86_64-unknown-linux-gnu || exit
+        cp ./target/x86_64-unknown-linux-gnu/release/sosistun ${{ env.BINDIR }}/sosistun-linux-amd64 || exit
+    - name: build linux-i686
+      run: |
+        cd ${{ env.GITDIR }} || exit
+        cross build --release --locked -j 20 --target i686-unknown-linux-gnu || exit
+        cp ./target/i686-unknown-linux-gnu/release/sosistun ${{ env.BINDIR }}/sosistun-linux-i686 || exit
+    - name: build linux-aarch64
+      run: |
+        cd ${{ env.GITDIR }} || exit
+        cross build --release --locked -j 20 --target aarch64-unknown-linux-gnu || exit
+        cp ./target/aarch64-unknown-linux-gnu/release/sosistun ${{ env.BINDIR }}/sosistun-linux-aarch64 || exit
+    - name: build android-aarch64
+      run: |
+        cd ${{ env.GITDIR }} || exit
+        cross build --release --locked -j 20 --target aarch64-linux-android || exit
+        cp ./target/aarch64-linux-android/release/sosistun ${{ env.BINDIR }}/sosistun-android-aarch64 || exit
+
+    - name: packing all binaries to a 7z file
+      run: 7z a ${{ env.GITDIR }}/bin.7z ${{ env.BINDIR }}/ -mx=9
+
+    - name: get current time
+      run: echo "TIME=`date +%s`" >> ${GITHUB_ENV}
+
+    - name: create new pre-release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.TK }}
+      with:
+        tag_name: _${{ env.TIME }}
+        release_name: (Pre-Release) Sosistun _${{ env.TIME }}
+        draft: false
+        prerelease: true
+
+    - name: upload pre-release assets
+      id: upload-release-asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.TK }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ${{ env.GITDIR }}/bin.7z
+        asset_name: bin.7z
+        asset_content_type: application/x-7z-compressed
