@@ -220,7 +220,9 @@ async fn async_main() {
                     }
 
                     if v_len != (32 * 2) {
-                        eprintln!("公鑰的長度必須是 32 字節，請檢查本程序的第六個參數是否輸入正確。");
+                        eprintln!(
+                            "公鑰的長度必須是 32 字節，請檢查本程序的第六個參數是否輸入正確。"
+                        );
                         //eprintln!("the length of public key is must be 32 bytes. please make sure you entered correct.");
                         process::exit(21);
                     }
@@ -324,7 +326,10 @@ async fn async_main() {
             };
             assert!((pubkey_hex.len() % 2) == 0);
 
-            println!("你的客戶端程序可以使用這個 public key（也就是公鑰） 來連接本服務器：{}", &pubkey_hex);
+            println!(
+                "你的客戶端程序可以使用這個 public key（也就是公鑰） 來連接本服務器：{}",
+                &pubkey_hex
+            );
             /*
             println!(
                 "Your clients can use this public key to connect this server: {}",
@@ -333,7 +338,9 @@ async fn async_main() {
             server(key, listen, origin).await;
         }
         _ => {
-            eprintln!("爲什麼你給我一個無效的運行模式？運行模式不是 client 就是 server，沒有第三個模式。");
+            eprintln!(
+                "爲什麼你給我一個無效的運行模式？運行模式不是 client 就是 server，沒有第三個模式。"
+            );
             //eprintln!("why you type a invalid mode???");
             process::exit(2);
         }
