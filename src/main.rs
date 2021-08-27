@@ -74,7 +74,11 @@ async fn client(pk: PublicKey, listen: SocketAddr, remote: SocketAddr) {
         let tcp_conn: smol::net::TcpStream = tcp_in.next().await.unwrap().unwrap();
         let sosistab_conn: sosistab::RelConn = sosistab_conn.open_conn(None).await.unwrap();
 
-        smol::spawn(smol::io::copy(sosistab_conn.clone(), tcp_conn.clone()).race(smol::io::copy(tcp_conn, sosistab_conn))).detach();
+        smol::spawn(
+            smol::io::copy(sosistab_conn.clone(), tcp_conn.clone())
+                .race(smol::io::copy(tcp_conn, sosistab_conn)),
+        )
+        .detach();
     }
 }
 
@@ -97,7 +101,11 @@ async fn server(sk: StaticSecret, listen: SocketAddr, origin: SocketAddr) {
                 let sosistab_conn: sosistab::RelConn = sosistab_conn.accept_conn().await.unwrap();
                 let tcp_conn = smol::net::TcpStream::connect(origin).await.unwrap();
 
-                smol::spawn(smol::io::copy(sosistab_conn.clone(), tcp_conn.clone()).race(smol::io::copy(tcp_conn, sosistab_conn))).detach();
+                smol::spawn(
+                    smol::io::copy(sosistab_conn.clone(), tcp_conn.clone())
+                        .race(smol::io::copy(tcp_conn, sosistab_conn)),
+                )
+                .detach();
             }
         })
         .detach();
