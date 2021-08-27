@@ -17,6 +17,9 @@ jobs:
     
     - name: check
       run: cargo check -j 20
+    
+    - name: install cross
+      run: cargo install cross -j 20
 
     - name: build x64
       run: RUSTFLAGS='-C target-feature=+crt-static' cross build --release --locked -j 20 --target x86_64-unknown-linux-gnu
