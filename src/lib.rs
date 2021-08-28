@@ -2,11 +2,11 @@ pub use std::net::SocketAddr;
 pub use std::sync::Arc;
 pub use std::{env, process};
 
-pub use smol::prelude::*;
+pub use {smol, smol::prelude::*};
 pub use sosistab;
 
-pub use rand_core::{OsRng, RngCore};
-pub use x25519_dalek::{PublicKey, StaticSecret};
+pub use {rand_core, rand_core::{OsRng, RngCore}};
+pub use {x25519_dalek, x25519_dalek::{PublicKey, StaticSecret}};
 
 pub use async_recursion::async_recursion;
 pub use dirs;
