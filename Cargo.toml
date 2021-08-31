@@ -11,7 +11,7 @@ authors = [ "Madara Eirik" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sosistab = "0.4.16"
+sosistab = "0.4.20"
 
 x25519-dalek={ version = "1.1.1", features = ["serde"] }
 rand = "0.8.4"
