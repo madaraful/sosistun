@@ -17,7 +17,7 @@ pub use {
 pub use async_recursion::async_recursion;
 pub use dirs;
 
-pub const VERSION: &str = "2.0.1";
+pub const VERSION: &str = "2.0.2";
 
 pub async fn genkey() -> StaticSecret {
     let mut key: [u8; 32] = [0u8; 32];
